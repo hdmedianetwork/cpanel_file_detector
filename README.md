@@ -94,51 +94,50 @@ only ever delete what the customer could already delete in File Manager.
 
 ## Install
 
-The repo is private, so servers never touch GitHub. Everything ships as one
-self-contained `install.sh` hosted on **storage.gosecureserver.in**.
+The code lives on GitHub. The only thing you publish is the small `install.sh`
+from this repo, at **https://storage.gosecureserver.in/install.sh**. It
+downloads the code from GitHub and runs `bin/deploy.sh`.
 
-**Publishing a release** (on your own machine, from this repo):
-
-```bash
-scripts/build-installer.sh        # → dist/install.sh and dist/VERSION
-```
-
-Upload **both** files to the web root of `storage.gosecureserver.in`, so these work:
-
-```
-https://storage.gosecureserver.in/install.sh
-https://storage.gosecureserver.in/VERSION
-```
-
-Check that the web server sends the script as plain text, not as a download page or HTML:
-
-```bash
-curl -sSL https://storage.gosecureserver.in/install.sh | head -3   # must start with #!/bin/bash
-curl -sSL https://storage.gosecureserver.in/VERSION                # e.g. 0.1.0
-```
-
-To publish somewhere else, pass the URL: `scripts/build-installer.sh https://other.example.com`.
-
-**Installing on a server** (as root, on any WHM/cPanel box, yours or a client's):
+On any WHM/cPanel server, as root:
 
 ```bash
 curl -sSL https://storage.gosecureserver.in/install.sh | bash
 ```
 
-This writes `/opt/skyserver-storage-guard` and runs `bin/deploy.sh`, which
-sets up `/etc/skyserver-storage-guard.conf`, the cron jobs, log rotation, the
-cPanel page in every theme, and the WHM plugin. Then:
+**With the repo private**, GitHub only hands the code to a token. Create a
+fine-grained personal access token on GitHub (Settings → Developer settings →
+Fine-grained tokens) with:
+
+- *Repository access:* only `hdmedianetwork/cpanel_file_detector`
+- *Permissions:* Contents → Read-only
+
+Then do one of the following:
+
+- paste it into `GITHUB_TOKEN=""` near the top of the `install.sh` you publish, so
+  every server installs with no extra step. Anyone with the URL can then also
+  read the code, but that is all the token allows; or
+- keep the published file token-free and pass the token per server:
+
+  ```bash
+  curl -sSL https://storage.gosecureserver.in/install.sh | STORAGE_GUARD_TOKEN=github_pat_xxx bash
+  ```
+
+The installer saves the token to `/etc/skyserver-storage-guard.token` (root
+only) for later updates. Without a token, it says the repo is private and stops.
+
+The installer sets up `/opt/skyserver-storage-guard`,
+`/etc/skyserver-storage-guard.conf`, the cron jobs, log rotation, the cPanel page
+in every theme, and the WHM plugin. Then:
 
 1. WHM → Plugins → SkyServer Storage Guard → **Scan all accounts**.
 2. Look through what it found.
 3. Settings → set the From address and support contact, and **Send test email**.
 
-**Releasing an update.** Bump `VERSION`, run `scripts/build-installer.sh`, and
-re-upload both files. Every server then shows the new version under **Check for
-Updates** in WHM, and **Install update** applies it. That downloads the same
-`install.sh` (and refuses anything that isn't one) and runs it. Running the
-`curl … | bash` line again does the same thing. Settings, scan reports and
-quarantined files are kept.
+**Releasing an update:** bump `VERSION` and merge to `main`. Every server then
+shows the new version under **Check for Updates** in WHM, and **Install update**
+downloads it from GitHub, using the saved token. Re-running the `curl … | bash`
+line does the same thing. Settings, scan reports and quarantined files are
+kept. The published `install.sh` only needs re-uploading if `install.sh` itself changes.
 
 From the shell:
 
