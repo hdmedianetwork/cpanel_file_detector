@@ -1,0 +1,8 @@
+/var/log/skyserver-storage-guard.log {
+    weekly
+    rotate 12
+    compress
+    missingok
+    notifempty
+    copytruncate
+}

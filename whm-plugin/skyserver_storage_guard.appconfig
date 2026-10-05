@@ -1,0 +1,8 @@
+name=skyserver_storage_guard
+service=whostmgr
+displayname=SkyServer Storage Guard
+url=/cgi/skyserver_storage_guard/index.cgi
+entryurl=skyserver_storage_guard/index.cgi
+user=root
+acls=all
+target=_self

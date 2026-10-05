@@ -1,0 +1,16 @@
+# SkyServer Storage Guard — installed to /etc/cron.d/skyserver-storage-guard
+# __INSTALL_DIR__ is replaced with the real install path by bin/deploy.sh.
+
+# cron's own PATH has none of cPanel's binaries in it; whmapi1 lives in
+# /usr/local/cpanel/bin. bin/guard fixes this for itself too.
+PATH=/usr/local/cpanel/bin:/usr/local/cpanel/scripts:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Nightly scan of every account. --enforce sends due reminders and suspends
+# overdue accounts, but only if those are switched on in the settings. Runs
+# after the SkyServer backup (02:00) so the two are not reading the same
+# disks at the same time.
+30 3 * * * root __INSTALL_DIR__/bin/guard scan-all --enforce
+
+# "Check again" requests from customers' Storage Report page (cheap no-op
+# when there are none).
+* * * * * root __INSTALL_DIR__/bin/guard worker

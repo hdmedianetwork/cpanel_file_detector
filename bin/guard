@@ -1,0 +1,31 @@
+#!/bin/bash
+# Entry point for bin/guard.php — finds a PHP binary and gives it a PATH
+# that has cPanel's own tools on it. cron runs jobs with a bare
+# /sbin:/bin:/usr/sbin:/usr/bin, which has no whmapi1, and a scan that
+# cannot list accounts scans nothing.
+set -euo pipefail
+
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+for d in /usr/local/cpanel/bin /usr/local/cpanel/scripts /usr/local/bin /usr/local/sbin /usr/sbin /usr/bin /sbin /bin; do
+  case ":$PATH:" in
+    *":$d:"*) ;;
+    *) if [ -d "$d" ]; then PATH="$PATH:$d"; fi ;;
+  esac
+done
+export PATH
+
+PHP_BIN="${SG_PHP:-}"
+if [ -z "$PHP_BIN" ]; then
+  PHP_BIN="$(command -v php || true)"
+fi
+if [ -z "$PHP_BIN" ] && [ -x /usr/local/cpanel/3rdparty/bin/php ]; then
+  PHP_BIN=/usr/local/cpanel/3rdparty/bin/php
+fi
+if [ -z "$PHP_BIN" ]; then
+  echo "[$(date '+%F %T')] [!] No PHP binary found — Storage Guard cannot run." >> /var/log/skyserver-storage-guard.log
+  echo "No PHP binary found." >&2
+  exit 1
+fi
+
+exec "$PHP_BIN" -d display_errors=stderr -d memory_limit=512M "$INSTALL_DIR/bin/guard.php" "$@"

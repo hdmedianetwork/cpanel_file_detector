@@ -1,0 +1,62 @@
+# SkyServer Storage Guard — configuration
+# Installed to /etc/skyserver-storage-guard.conf (chmod 600). Everything here
+# can also be changed from WHM → Plugins → SkyServer Storage Guard → Settings.
+
+# ---- What gets flagged ------------------------------------------------------
+
+# Archive and backup files at least this big (MB) are flagged.
+ARCHIVE_MIN_MB="100"
+
+# Any file at all at least this big (MB) is flagged — videos, disk images,
+# dumps with odd names.
+LARGE_FILE_MB="500"
+
+# What counts as an archive or backup. Space separated; tar.gz style
+# multi-part extensions work.
+ARCHIVE_EXTENSIONS="zip rar 7z tar tar.gz tgz tar.bz2 tbz2 tar.xz txz gz bz2 xz zst sql sql.gz wpress jpa daf bak iso"
+
+# Folders (relative to each home) that are never scanned. Mail is excluded:
+# mailbox size is a quota question, not this one.
+EXCLUDE_PATHS="mail .cpanel .cagefs .cl.selector .spamassassin .skyserver-storage etc ssl"
+
+# How many files are listed per account, largest first. Totals always count
+# every file.
+MAX_FILES_PER_ACCOUNT="200"
+
+# One account's scan stops after this many minutes, so one enormous home
+# cannot stall the nightly run.
+SCAN_TIMEOUT_MIN="30"
+
+# ---- Enforcement -------------------------------------------------------------
+# Off by default: nothing is sent to a customer and no account is suspended
+# unless the admin does it, or switches it on here.
+
+# Days from the first reminder to the deadline.
+GRACE_DAYS="7"
+
+# 1 = the nightly run reminds flagged accounts by itself, every
+# REMIND_EVERY_DAYS days until they clean up.
+AUTO_REMIND="0"
+REMIND_EVERY_DAYS="3"
+
+# 1 = the nightly run suspends accounts still over the limits after their
+# deadline. Their sites go offline.
+AUTO_SUSPEND="0"
+SUSPEND_REASON="Storage policy: large or backup files were not removed after notice"
+
+# Quarantined files are kept this many days, then deleted for good.
+QUARANTINE_DAYS="7"
+
+# ---- Notices -----------------------------------------------------------------
+
+# From address for reminders. Empty = noreply@<hostname>.
+NOTICE_FROM=""
+NOTICE_SUBJECT="Action needed: large files in your hosting account"
+# Added to every reminder and to the customer's Storage Report page.
+NOTICE_MESSAGE=""
+# Shown to the customer: an email, phone number or ticket URL.
+SUPPORT_CONTACT=""
+
+# Gets a summary after the nightly scan when there are new or overdue
+# accounts. Empty disables it.
+ALERT_EMAIL=""
