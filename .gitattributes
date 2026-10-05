@@ -1,0 +1,7 @@
+# Keep shell scripts and the CGI on LF line endings — a CRLF shebang does not run.
+*.sh       text eol=lf
+*.php      text eol=lf
+*.cgi      text eol=lf
+bin/guard  text eol=lf
+# Docs are not code for GitHub's language stats.
+docs/**    linguist-documentation
