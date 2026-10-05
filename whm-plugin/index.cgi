@@ -138,7 +138,7 @@ function posted_ids(): array {
  * The child gets a clean environment: this CGI's own variables
  * (GATEWAY_INTERFACE, SCRIPT_FILENAME, REQUEST_METHOD…) would otherwise
  * reach it, and a php-cgi binary seeing them runs the web script instead of
- * the one it was given. Its output goes to the Activity Log rather than
+ * the one it was given. Its errors go to the Activity Log rather than
  * /dev/null, so a scan that cannot start says why.
  */
 function launch(array $args): void {
@@ -153,7 +153,9 @@ function launch(array $args): void {
         $cmd .= ' ' . escapeshellarg($a);
     }
     sg_log('[*] ' . implode(' ', $args) . ' requested by ' . actor());
-    shell_exec($cmd . ' >> ' . escapeshellarg(SG_LOG_FILE) . ' 2>&1 < /dev/null &');
+    // Its summary on stdout is for a terminal; it logs its own progress.
+    // Errors (stderr) still land in the log.
+    shell_exec($cmd . ' > /dev/null 2>> ' . escapeshellarg(SG_LOG_FILE) . ' < /dev/null &');
 }
 
 /** Waits briefly for a full scan to take its lock — proof it really started. */
@@ -232,7 +234,7 @@ if ($isApi) {
             // Marked here as well as by the scan itself, so the very next
             // poll already shows the account as being scanned.
             @file_put_contents(SG_SPOOL . "/scanning/$user", 'queued');
-            json_out(['ok' => true, 'message' => "Scanning $user…"]);
+            json_out(['ok' => true, 'message' => "Scanning {$user}…"]);
 
         case 'remind':
             json_out(sg_remind(posted_user(), actor()));
