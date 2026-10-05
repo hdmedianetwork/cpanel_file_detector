@@ -15,17 +15,19 @@ for d in /usr/local/cpanel/bin /usr/local/cpanel/scripts /usr/local/bin /usr/loc
 done
 export PATH
 
-PHP_BIN="${SG_PHP:-}"
+# The CLI binary specifically. On some servers `php` is php-cgi, which
+# ignores the script it is given when it finds CGI variables around it, and
+# guard.php refuses to run under anything but the CLI.
+is_cli() { [ -x "$1" ] && [ "$("$1" -n -r 'echo PHP_SAPI;' 2>/dev/null)" = "cli" ]; }
+PHP_BIN=""
+for c in "${SG_PHP:-}" "$(command -v php 2>/dev/null || true)" /usr/local/bin/php /usr/bin/php \
+         /opt/cpanel/ea-php*/root/usr/bin/php /usr/local/cpanel/3rdparty/bin/php; do
+  if [ -n "$c" ] && is_cli "$c"; then PHP_BIN="$c"; break; fi
+done
 if [ -z "$PHP_BIN" ]; then
-  PHP_BIN="$(command -v php || true)"
-fi
-if [ -z "$PHP_BIN" ] && [ -x /usr/local/cpanel/3rdparty/bin/php ]; then
-  PHP_BIN=/usr/local/cpanel/3rdparty/bin/php
-fi
-if [ -z "$PHP_BIN" ]; then
-  echo "[$(date '+%F %T')] [!] No PHP binary found — Storage Guard cannot run." >> /var/log/skyserver-storage-guard.log
-  echo "No PHP binary found." >&2
+  echo "[$(date '+%F %T')] [!] No PHP command-line binary found — Storage Guard cannot run." >> /var/log/skyserver-storage-guard.log
+  echo "No PHP command-line binary found." >&2
   exit 1
 fi
 
-exec "$PHP_BIN" -d display_errors=stderr -d memory_limit=512M "$INSTALL_DIR/bin/guard.php" "$@"
+exec "$PHP_BIN" -d display_errors=stderr -d memory_limit=512M -d disable_functions= -d open_basedir= "$INSTALL_DIR/bin/guard.php" "$@"

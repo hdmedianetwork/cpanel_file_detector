@@ -132,12 +132,47 @@ function posted_ids(): array {
     return array_values($ids);
 }
 
+/**
+ * Starts bin/guard in the background, detached from this request.
+ *
+ * The child gets a clean environment: this CGI's own variables
+ * (GATEWAY_INTERFACE, SCRIPT_FILENAME, REQUEST_METHOD…) would otherwise
+ * reach it, and a php-cgi binary seeing them runs the web script instead of
+ * the one it was given. Its output goes to the Activity Log rather than
+ * /dev/null, so a scan that cannot start says why.
+ */
 function launch(array $args): void {
-    $cmd = 'nohup ' . escapeshellarg(SG_INSTALL_DIR . '/bin/guard');
+    $cmd = 'cd / && env -i PATH=/usr/local/cpanel/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin HOME=/root';
+    foreach (['SG_CONF', 'SG_SPOOL', 'SG_LOG', 'SG_TEST_HOME_BASE', 'SG_WHMAPI', 'SG_SENDMAIL'] as $k) {
+        if (getenv($k) !== false) {
+            $cmd .= ' ' . $k . '=' . escapeshellarg((string) getenv($k));
+        }
+    }
+    $cmd .= ' setsid nohup ' . escapeshellarg(SG_INSTALL_DIR . '/bin/guard');
     foreach ($args as $a) {
         $cmd .= ' ' . escapeshellarg($a);
     }
-    shell_exec($cmd . ' > /dev/null 2>&1 &');
+    sg_log('[*] ' . implode(' ', $args) . ' requested by ' . actor());
+    shell_exec($cmd . ' >> ' . escapeshellarg(SG_LOG_FILE) . ' 2>&1 < /dev/null &');
+}
+
+/** Waits briefly for a full scan to take its lock — proof it really started. */
+function scan_started(int $since): bool {
+    for ($i = 0; $i < 16; $i++) {
+        usleep(250000);
+        if (sg_scan_running()) {
+            return true;
+        }
+        $s = sg_scan_state();
+        if ($s && strtotime($s['started_at'] ?? '') >= $since) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function log_lines(int $n): string {
+    return trim((string) shell_exec('tail -n ' . $n . ' ' . escapeshellarg(SG_LOG_FILE) . ' 2>/dev/null'));
 }
 
 // ---------------------------------------------------------------------------
@@ -183,7 +218,12 @@ if ($isApi) {
             if (sg_scan_running()) {
                 json_out(['ok' => false, 'error' => 'A scan is already running.']);
             }
+            $since = time();
             launch(['scan-all']);
+            if (!scan_started($since)) {
+                json_out(['ok' => false, 'error' => 'The scan did not start. Last lines of the log: '
+                    . (log_lines(4) ?: '(nothing)') . ' — run /opt/skyserver-storage-guard/bin/guard scan-all over SSH to see the full error.']);
+            }
             json_out(['ok' => true, 'message' => 'Scan started — this page will follow it.']);
 
         case 'scan_user':
