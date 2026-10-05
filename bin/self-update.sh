@@ -3,38 +3,22 @@
 # server with one button press in WHM.
 #
 #   self-update.sh check    → prints "local <ver> remote <ver> update|current"
-#   self-update.sh apply    → fetches install.sh from the repo and runs it
-#
-# Uses the token the installer saved in /etc/skyserver-storage-guard.token,
-# so it works with the repo private.
+#   self-update.sh apply    → re-runs the installer, which pulls the latest code
 set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_REPO="hdmedianetwork/cpanel_file_detector"
 GITHUB_BRANCH="${STORAGE_GUARD_BRANCH:-main}"
-TOKEN_FILE="/etc/skyserver-storage-guard.token"
-API="${STORAGE_GUARD_API:-https://api.github.com}"
+RAW="${STORAGE_GUARD_RAW:-https://raw.githubusercontent.com/$GITHUB_REPO/$GITHUB_BRANCH}"
 
 ACTION="${1:-check}"
 
-TOKEN="${STORAGE_GUARD_TOKEN:-}"
-if [ -z "$TOKEN" ] && [ -r "$TOKEN_FILE" ]; then
-  TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
-fi
-AUTH=()
-[ -n "$TOKEN" ] && AUTH=(-H "Authorization: Bearer $TOKEN")
-
 local_version() { cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo "unknown"; }
-
-repo_file() { # <path> → contents on stdout
-  curl -fsSL --max-time 30 ${AUTH[@]+"${AUTH[@]}"} -H "Accept: application/vnd.github.raw" \
-    "$API/repos/$GITHUB_REPO/contents/$1?ref=$GITHUB_BRANCH"
-}
 
 case "$ACTION" in
   check)
     LOCAL="$(local_version)"
-    REMOTE="$(repo_file VERSION 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
+    REMOTE="$(curl -fsSL --max-time 20 "$RAW/VERSION" 2>/dev/null | head -n1 | tr -d '[:space:]' || true)"
     if ! [[ "$REMOTE" =~ ^[0-9][0-9A-Za-z.+-]*$ ]]; then
       echo "local $LOCAL remote unreachable error"
       exit 1
@@ -48,12 +32,15 @@ case "$ACTION" in
 
   apply)
     [ "$(id -u)" -eq 0 ] || { echo "self-update must run as root" >&2; exit 1; }
+    # The latest installer, so a change to how installing works ships with
+    # the release; the copy already on disk is the fallback.
     TMP="$(mktemp)"
     trap 'rm -f "$TMP"' EXIT
-    repo_file install.sh > "$TMP" || { echo "Could not fetch install.sh from GitHub." >&2; exit 1; }
-    grep -q 'SKYSERVER-STORAGE-GUARD-INSTALLER' "$TMP" && bash -n "$TMP" \
-      || { echo "What GitHub returned is not the Storage Guard installer — not running it." >&2; exit 1; }
-    STORAGE_GUARD_TOKEN="$TOKEN" bash "$TMP"
+    if ! { curl -fsSL --max-time 30 -o "$TMP" "$RAW/install.sh" \
+           && grep -q 'SKYSERVER-STORAGE-GUARD-INSTALLER' "$TMP" && bash -n "$TMP"; }; then
+      cp "$INSTALL_DIR/install.sh" "$TMP"
+    fi
+    bash "$TMP"
     echo "Updated to version $(local_version)."
     ;;
 

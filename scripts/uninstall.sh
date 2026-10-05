@@ -36,8 +36,7 @@ for N in "$SPOOL_DIR"/notices/*.json; do
   fi
 done
 
-echo "[storage-guard] Removing $INSTALL_DIR and the saved GitHub token..."
-rm -f /etc/skyserver-storage-guard.token
+echo "[storage-guard] Removing $INSTALL_DIR..."
 rm -rf "$INSTALL_DIR"
 
 LEFT="$(ls "$SPOOL_DIR"/quarantine/*.json 2>/dev/null | wc -l)"
