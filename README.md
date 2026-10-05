@@ -1,184 +1,312 @@
-# SkyServer Storage Guard
+<p align="center">
+  <img src="docs/images/banner.svg" alt="SkyServer Storage Guard" width="100%">
+</p>
 
-Finds the large files and the archives/backups that customers leave in their
-hosting space — `backup-full.zip`, `.wpress` exports, `.sql` dumps, ISOs,
-4K videos — across every cPanel account on a server. Then it lets the admin
-deal with them from one WHM page: remind the customer, quarantine or delete the
-files, or suspend the account.
+<p align="center">
+  <a href="https://github.com/hdmedianetwork/cpanel_file_detector/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/hdmedianetwork/cpanel_file_detector/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="cPanel & WHM" src="https://img.shields.io/badge/cPanel%20%26%20WHM-plugin-ff6c2c">
+  <img alt="PHP 8" src="https://img.shields.io/badge/PHP-8.x-777bb4">
+</p>
 
-A sibling of the [SkyServer Backup Manager](https://github.com/hdmedianetwork/skyserver_cpanel_backup_module):
-same design system, same installer, same in-place updater, so the two look
-and behave like one product.
+<p align="center">
+  <b>Storage Guard</b> scans every cPanel account on a server for the backups, archives and oversized files
+  that fill disks. You can then remind the customer, quarantine or delete the files, or suspend the
+  account, all from one WHM page.
+</p>
 
-## What it does
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="SECURITY.md">Security</a>
+</p>
 
-```
-cron 03:30 ─ bin/guard scan-all --enforce
-               ├─ every account: find over its home (nice/ionice, -xdev, no symlinks)
-               │    → reports/<user>.json        what was flagged, largest first
-               │    → cases/<user>.json          told? when? deadline? suspended?
-               │    → notices/<user>.json        what the customer's page shows
-               ├─ quarantine batches past their date are deleted
-               ├─ if AUTO_REMIND=1   remind accounts that are due a reminder
-               ├─ if AUTO_SUSPEND=1  suspend accounts past their deadline
-               └─ admin summary email (ALERT_EMAIL) when something is new or overdue
+---
 
-cron every minute ─ bin/guard worker   rescans accounts whose customer pressed
-                                       "Check again" or deleted files
-```
+<p align="center">
+  <img src="docs/images/whm-overview.png" alt="Storage Guard dashboard in WHM" width="100%">
+</p>
 
-**Flagged** means either:
+## Why Storage Guard
 
-- an archive/backup (`zip rar 7z tar tar.gz tgz … sql sql.gz wpress jpa bak iso`) of at
-  least `ARCHIVE_MIN_MB` (100 MB by default), or
-- any file at all of at least `LARGE_FILE_MB` (500 MB by default).
+On shared hosting, a handful of accounts quietly use their web space as file storage. Typical
+examples: an 18 GB `backup-full.zip` in `public_html`, a stack of `.wpress` exports, a forgotten
+database dump, a 6 GB ISO. They fill the disk, slow down backups for everyone, and nobody notices
+until the server alerts.
 
-`mail/` and cPanel's own folders are not scanned. Both limits, the extension
-list and the excluded folders are in Settings.
+Storage Guard finds those files every night, shows you exactly who has what, and gives you a fair
+process to follow:
 
-## The admin page — WHM → Plugins → SkyServer Storage Guard
+**flag → remind with a deadline → customer cleans up**, or, if they don't, **quarantine, delete or suspend**.
 
-- **Overview**: how many accounts are flagged, how much space they hold, who
-  is past their deadline, and a "Needs attention" list that puts overdue
-  accounts first.
-- **Accounts**: every account with its disk use against its quota, what is
-  flagged, and where it stands. Each row has these actions:
-  - **Files**: opens the account's full list of flagged files, with its history
-    (when it was flagged, each reminder, each removal) and the files allowed to stay.
-  - **Remind**: emails the account's contact address and puts a notice on its
-    cPanel page. The first reminder starts the grace period (`GRACE_DAYS`, 7 days by default).
-    Later reminders keep the same deadline.
-  - **Suspend / Unsuspend**: through `whmapi1 suspendacct`, with a reason you can edit.
-  - **Rescan** that one account.
-- **Files**: the largest flagged files across the whole server. Select any of
-  them, across accounts, and:
-  - **Quarantine**: moves them out of the account. They stop counting against
-    the customer's quota straight away, and the customer can no longer see them.
-    You can put them back for `QUARANTINE_DAYS` (7 days by default); after that
-    they are deleted.
-  - **Delete permanently**: no undo.
-  - **Allow to stay**: that file is never flagged again, for files you have
-    agreed the customer may keep.
-- **Quarantine**: every batch, with **Put back** and **Delete now**.
-- **Settings**: thresholds, enforcement, and the email notices, with a test-email button.
-- **Activity Log**: every scan, reminder, removal and suspension, and who did it.
+Nothing happens to a customer automatically unless you switch it on.
 
-**Nothing happens to a customer by itself unless you turn it on.** Scanning
-only reads. Automatic reminders (`AUTO_REMIND`) and automatic suspension
-(`AUTO_SUSPEND`) are both off after install. You start by looking, then you
-press Remind yourself. You switch automation on once you trust what it finds.
+## Features
 
-### A typical case
+| | |
+|---|---|
+| **Nightly server-wide scan** | Every home directory is scanned at 03:30, at low CPU and disk priority (`nice`/`ionice`), without following symlinks or crossing mounts. |
+| **Smart detection** | Flags archives and backups (`zip`, `tar.gz`, `sql`, `wpress`, `jpa`, `rar`, `7z`, `iso`, and more) over 100 MB, and any file over 500 MB. Both limits are configurable. |
+| **One-click reminders** | Emails the account's contact address and shows a notice in the customer's own cPanel, with a deadline (7 days by default). Reminders are numbered, and the deadline doesn't move. |
+| **Quarantine with undo** | Moves files out of the account straight away, so they stop counting against its quota. They can be restored for 7 days, then they are deleted for good. |
+| **Suspend / unsuspend** | Through WHM's own API, with an editable reason. Overdue accounts are listed first so you can act on them. |
+| **Allow-list** | Mark a file as allowed to stay and it is never flagged again. |
+| **Customer self-service** | A **Storage Report** page in every cPanel account. Customers see their own flagged files and delete them themselves. Their account is rescanned within a minute. |
+| **Optional automation** | Automatic reminders, automatic suspension of overdue accounts, and a daily admin summary email. All are off by default. |
+| **Full audit trail** | Every scan, reminder, removal and suspension is logged with who did it, and kept in each account's history. |
+| **One-click updates** | **Check for Updates → Install update** in WHM pulls the latest release from GitHub. Settings and data are kept. |
+| **Light & dark theme** | The same design system as the SkyServer Backup Manager. Nothing loads from a CDN, so the pages work on servers with no outbound access. |
 
-1. The nightly scan flags `sharmaho`: `public_html/backup-full-2025.zip`, 18 GB.
-2. You press **Remind**. The customer gets an email listing the files and a
-   deadline 7 days out. The same notice shows in their cPanel.
-3. The customer deletes the file, from the email's instructions or from the Storage
-   Report page. The worker rescans within a minute, the case closes by itself,
-   and the account shows as clean.
-4. If they do nothing, the account shows as **overdue** after the deadline.
-   You then quarantine the files, or suspend the account (or have the nightly run do it).
+## Screenshots
 
-## The customer page — cPanel → Files → Storage Report
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/whm-accounts.png" alt="Accounts"><br><sub><b>Accounts</b>: disk use against quota, flagged files, deadline and actions for every account.</sub></td>
+    <td width="50%"><img src="docs/images/whm-account.png" alt="Account detail"><br><sub><b>Account detail</b>: every flagged file, bulk quarantine / delete / allow, and the full history.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/whm-files.png" alt="Files"><br><sub><b>Files</b>: the largest flagged files across the whole server, selectable across accounts.</sub></td>
+    <td width="50%"><img src="docs/images/cpanel-storage-report.png" alt="Customer Storage Report"><br><sub><b>Customer view</b>: cPanel → Files → Storage Report, with the deadline and one-click delete.</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/whm-dark.png" alt="Dark theme"><br><sub><b>Dark theme</b>, remembered per browser.</sub></td>
+  </tr>
+</table>
 
-Each account sees only its own files:
+## Requirements
 
-- the flagged files, with size and date, and **Open folder** (File Manager)
-  and **Delete** on each one, plus bulk delete;
-- the notice and deadline once you have sent one, with your extra message
-  and support contact;
-- **Check again**, which asks for a fresh scan.
+- A cPanel & WHM server with root access (in production on WHM 134)
+- PHP 8 CLI. cPanel's own EasyApache PHP is enough.
+- `curl`, `tar`, `find` and `sendmail` (present on every cPanel server)
 
-Deleting happens in the page itself, which runs as the account. It can
-only ever delete what the customer could already delete in File Manager.
+## Quick start
 
-## Install
-
-The code lives on GitHub. The only thing you publish is the small `install.sh`
-from this repo, at **https://storage.gosecureserver.in/install.sh**. It
-downloads the code from GitHub and runs `bin/deploy.sh`.
-
-On any WHM/cPanel server, as root:
+As **root** on the WHM server:
 
 ```bash
 curl -sSL https://storage.gosecureserver.in/install.sh | bash
 ```
 
-The repo is public, so no token or login is needed. The installer downloads the
-`main` branch archive from github.com, checks it, swaps it into place and
-runs `bin/deploy.sh`.
+The installer downloads the latest release from this repository, then installs the WHM plugin, the
+cPanel page, the cron jobs and log rotation. It takes a few seconds and needs no restart.
 
-The installer sets up `/opt/skyserver-storage-guard`,
-`/etc/skyserver-storage-guard.conf`, the cron jobs, log rotation, the cPanel page
-in every theme, and the WHM plugin. Then:
+Then:
 
-1. WHM → Plugins → SkyServer Storage Guard → **Scan all accounts**.
-2. Look through what it found.
-3. Settings → set the From address and support contact, and **Send test email**.
+1. Open **WHM → Plugins → SkyServer Storage Guard** and press **Scan all accounts**.
+2. Review what it found. Nothing is sent to customers and nothing is deleted at this point.
+3. Open **Settings**, enter your **From address** and **support contact**, then press **Send test email**.
+4. Start with a few accounts: open one, check its files, and press **Remind**.
 
-**Releasing an update:** bump `VERSION` and merge to `main`. Every server then
-shows the new version under **Check for Updates** in WHM, and **Install update**
-downloads it from GitHub. Re-running the `curl … | bash`
-line does the same thing. Settings, scan reports and quarantined files are
-kept. The published `install.sh` only needs re-uploading if `install.sh` itself changes.
+The scan then runs every night at 03:30. Turn on automatic reminders or suspension only once you
+are happy with what it flags.
 
-From the shell:
+<details>
+<summary><b>Alternative install methods</b></summary>
+
+**Directly from GitHub** (same result):
 
 ```bash
-/opt/skyserver-storage-guard/bin/guard scan-all          # every account
-/opt/skyserver-storage-guard/bin/guard scan-user <user>  # one account, prints its files
-/opt/skyserver-storage-guard/bin/guard status            # flagged accounts, one per line
-/opt/skyserver-storage-guard/bin/guard remind <user>
+curl -sSL https://raw.githubusercontent.com/hdmedianetwork/cpanel_file_detector/main/install.sh | bash
 ```
 
-**Uninstall:** `/opt/skyserver-storage-guard/scripts/uninstall.sh`. It leaves the
-config, the reports, and any files still in quarantine, which belong to customers.
+**Offline / without the installer:** download the repository as a ZIP (**Code → Download ZIP**),
+then on the server:
 
-## Safety
+```bash
+cd /opt
+unzip cpanel_file_detector-main.zip
+mv cpanel_file_detector-main skyserver-storage-guard   # the path must be exactly this
+bash /opt/skyserver-storage-guard/bin/deploy.sh
+```
 
-Root works inside directories that customers control, so every file
-operation is built to not be tricked into touching anything else:
+**A specific branch** (for testing):
 
-- **Only scanned files can be acted on.** The dashboard sends file *ids* from
-  the latest report, never paths. A crafted request cannot name a file the
-  scan did not find inside that account's home.
-- **No symlink is followed.** The scan never follows one (`find -P`, `-xdev`).
-  Before root removes, quarantines or restores a file, it walks into its
-  folder one component at a time. Each step must be a real directory, and it
-  checks that the directory it entered is the one it inspected (device and inode).
-  It then works on a bare filename relative to that pinned directory. Swapping
-  a folder for a symlink mid-way is refused, not followed (tested in `tests/smoke.sh`).
-- **Quarantine** sits beside the homes (`/home/.skyserver-quarantine`, `0700 root`).
-  It is on the same filesystem, so a 20 GB file is a rename, not a copy.
-  Files are handed to root so they leave the customer's quota. A file that
-  lives on a different filesystem from it cannot be quarantined; use delete instead.
-- **Restore never overwrites.** If something new is at the old path, that file stays in quarantine.
-- **The customer page never runs as root.** It deletes as the account itself. Its
-  "check again" is a file in a sticky drop box, honoured only when the file's
-  owner is the account it names.
-- **Everything that changes something is POST-only** in both panels, so a
-  prefetch or a bookmarked link can never delete or suspend anything.
+```bash
+curl -sSL https://storage.gosecureserver.in/install.sh | STORAGE_GUARD_BRANCH=my-branch bash
+```
+</details>
 
-Spool modes (`/var/spool/skyserver-storage-guard`):
+## How it works
 
-| Path | Mode | Why |
-| --- | --- | --- |
-| `./` , `notices/` | `0751` | accounts reach their own notice (`0640 root:<user>`) but cannot list anyone else's |
-| `reports/`, `cases/`, `quarantine/`, `scanning/` | `0700` | root's own records |
-| `rescan-requests/` | `1733` | drop box: an account can add its own request, not touch others' |
+```
+                 ┌──────────────── nightly, 03:30 ────────────────┐
+                 │  scan every home → flag files → open a case     │
+                 │  (optional) remind due · suspend overdue        │
+                 └───────────────────────┬────────────────────────┘
+                                         ▼
+ WHM: SkyServer Storage Guard   ◄──── reports & cases ────►   cPanel: Storage Report
+   Remind · Quarantine · Delete                                 customer sees own files,
+   Allow · Suspend · Unsuspend                                  deletes them, "Check again"
+                                         │
+                                         ▼
+                      worker (every minute) rescans an account after
+                      its customer deletes files, and closes the case
+```
+
+A case **opens** when a scan finds files over the limits, and **closes by itself** once a later scan
+finds none. Each account is always in one of these states:
+
+| Status | Meaning |
+|---|---|
+| <img src="https://img.shields.io/badge/-clean-0f8a4d" alt="clean"> | Nothing over the limits |
+| <img src="https://img.shields.io/badge/-not%20told%20yet-b4750d" alt="not told yet"> | Files flagged, no reminder sent yet |
+| <img src="https://img.shields.io/badge/-notified-2563eb" alt="notified"> | Reminded; within its grace period |
+| <img src="https://img.shields.io/badge/-overdue-cc2f2f" alt="overdue"> | Deadline passed and files still there |
+| <img src="https://img.shields.io/badge/-suspended-cc2f2f" alt="suspended"> | Account suspended (by you, WHM, or Storage Guard) |
+
+More detail on storage layout, permissions and file safety is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Configuration
+
+Everything is editable in **WHM → Storage Guard → Settings**. The values are stored in
+`/etc/skyserver-storage-guard.conf` (root only).
+
+| Setting | Default | Description |
+|---|---|---|
+| `ARCHIVE_MIN_MB` | `100` | Archives and backups at least this size are flagged |
+| `LARGE_FILE_MB` | `500` | Any file at least this size is flagged |
+| `ARCHIVE_EXTENSIONS` | `zip rar 7z tar tar.gz tgz … sql wpress jpa bak iso` | What counts as an archive or backup |
+| `EXCLUDE_PATHS` | `mail .cpanel .cagefs etc ssl …` | Folders (relative to each home) that are never scanned |
+| `MAX_FILES_PER_ACCOUNT` | `200` | Files listed per account, largest first (totals always count every file) |
+| `SCAN_TIMEOUT_MIN` | `30` | Time limit for scanning one account |
+| `GRACE_DAYS` | `7` | Days from the first reminder to the deadline |
+| `AUTO_REMIND` | `0` | `1` = the nightly run sends due reminders itself |
+| `REMIND_EVERY_DAYS` | `3` | Interval between automatic reminders |
+| `AUTO_SUSPEND` | `0` | `1` = the nightly run suspends accounts past their deadline |
+| `SUSPEND_REASON` | *Storage policy: …* | Shown in WHM and on the suspended page |
+| `QUARANTINE_DAYS` | `7` | How long quarantined files can be restored |
+| `NOTICE_FROM` | `noreply@<hostname>` | From address of reminder emails. **Set this.** |
+| `NOTICE_SUBJECT` | *Action needed: …* | Subject of reminder emails |
+| `NOTICE_MESSAGE` | *(empty)* | Extra text added to every reminder and to the customer page |
+| `SUPPORT_CONTACT` | *(empty)* | Email, phone or ticket URL shown to customers |
+| `ALERT_EMAIL` | *(empty)* | Receives a summary after nightly scans that find new or overdue accounts |
+
+## Command line
+
+```bash
+guard=/opt/skyserver-storage-guard/bin/guard
+
+$guard scan-all              # scan every account now
+$guard scan-user <user>      # scan one account and print its largest files
+$guard status                # flagged accounts, one per line
+$guard remind <user>         # send a reminder now
+$guard purge-quarantine      # delete quarantine batches past their date
+```
+
+Logs: `/var/log/skyserver-storage-guard.log`, also shown in **Activity Log** in WHM.
+
+## Updating
+
+Press **Check for Updates → Install update** in WHM, or run the install command again. Settings,
+scan reports and quarantined files are always kept.
+
+## Uninstalling
+
+```bash
+/opt/skyserver-storage-guard/scripts/uninstall.sh
+```
+
+This removes the plugin, the cPanel page and the cron jobs. The configuration and anything still in
+quarantine are left in place, because quarantined files belong to your customers. The script lists
+where they are.
+
+## Security
+
+Storage Guard runs as root and works inside directories that customers control, so it is
+built so that it cannot be tricked into touching anything else:
+
+- **Only files found by the scan can be acted on.** The dashboard sends file IDs, never paths.
+- **Symlinks are never followed.** Every file operation walks into the folder one level at a time,
+  checks each step is a real directory, and works relative to the folder it pinned. A folder
+  swapped for a symlink in the middle is refused.
+- **The customer page never runs as root.** Deletions there run as the account itself.
+- **Quarantine never overwrites.** A restore that would replace something new is skipped.
+- **Every change is POST-only**, behind WHM's and cPanel's session tokens.
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
+## FAQ
+
+<details>
+<summary><b>Will it delete anything on its own?</b></summary>
+
+No. Scans only read. Files are removed only when you press **Quarantine** or **Delete**, or when the
+customer deletes them. Automatic reminders and automatic suspension are both off until you enable
+them in Settings.
+</details>
+
+<details>
+<summary><b>Does a scan slow the server down?</b></summary>
+
+Scans run at the lowest CPU and I/O priority and only look at file sizes, never file contents. They
+skip `mail/` and cPanel's own folders, and each account has a time limit (`SCAN_TIMEOUT_MIN`), so
+one huge account can't hold up the rest. How long a full scan takes depends on how many files the
+accounts hold, not how big they are.
+</details>
+
+<details>
+<summary><b>"Scan all accounts" does nothing</b></summary>
+
+Since v0.1.1 the button reports why a scan could not start, and the reason is also written to
+**Activity Log**. You can also run `/opt/skyserver-storage-guard/bin/guard scan-all` over SSH to see
+the full output.
+</details>
+
+<details>
+<summary><b>Customers don't receive the reminder email</b></summary>
+
+1. Set **From address** in Settings to a mailbox on a domain whose SPF/DKIM is valid on this server.
+2. Use **Send test email** and check the inbox and the spam folder.
+3. Accounts without a contact email still get the notice in their cPanel. The dashboard marks these
+   with *email failed*.
+</details>
+
+<details>
+<summary><b>The plugin does not appear in WHM</b></summary>
+
+Run `bash /opt/skyserver-storage-guard/bin/deploy.sh` and check the line that starts with
+`WHM plugin registered`. If `register_appconfig` printed an error, that error explains why.
+</details>
+
+<details>
+<summary><b>A file can't be quarantined: "on a different filesystem"</b></summary>
+
+Quarantine moves files instead of copying them, so it has to stay on the same disk. A file stored
+on another mount can only be deleted permanently.
+</details>
 
 ## Development
 
 ```bash
-tests/smoke.sh     # needs php and jq; run as root
+tests/smoke.sh   # end-to-end test suite; needs php + jq, run as root
 ```
 
-The smoke test builds a fake server: a stub `whmapi1`, a stub `sendmail`, and
-two homes full of sparse files. It then runs every path end to end: scanning,
-reminders, quarantine and restore, the symlink refusal, permanent delete,
-allow-to-stay, suspension, cron enforcement, and the customer's own delete
-followed by the worker's rescan.
+The suite builds a fake server (stub `whmapi1`, stub `sendmail`, sparse files) and tests every path:
+scanning, reminders, quarantine and restore, the symlink protection, deletion, the allow-list,
+suspension, cron enforcement and the customer page. It runs on every push and pull request.
 
-`lib/guard-lib.php` holds all the logic and is shared by `bin/guard.php` (cron)
-and `whm-plugin/index.cgi` (dashboard). `ui/sky-ui.php` is the Backup Manager's
-design system, with the icons and the wide dialog a file list needs.
+```
+bin/           guard (CLI + cron), deploy, self-update
+lib/           guard-lib.php — all the logic, shared by CLI and WHM
+whm-plugin/    WHM dashboard (index.cgi) and AppConfig
+plugin/        cPanel Storage Report page
+ui/            sky-ui.php — the shared SkyServer design system
+etc/           config template, cron, logrotate
+```
+
+To release a new version: update `VERSION` and `CHANGELOG.md`, then merge to `main`. Servers see it
+under **Check for Updates**.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+<p align="center">
+  <sub>Part of the <b>SkyServer</b> hosting toolkit, alongside
+  <a href="https://github.com/hdmedianetwork/skyserver_cpanel_backup_module">SkyServer Backup Manager</a>.</sub>
+</p>
