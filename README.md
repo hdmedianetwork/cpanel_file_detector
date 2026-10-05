@@ -104,26 +104,9 @@ On any WHM/cPanel server, as root:
 curl -sSL https://storage.gosecureserver.in/install.sh | bash
 ```
 
-**With the repo private**, GitHub only hands the code to a token. Create a
-fine-grained personal access token on GitHub (Settings → Developer settings →
-Fine-grained tokens) with:
-
-- *Repository access:* only `hdmedianetwork/cpanel_file_detector`
-- *Permissions:* Contents → Read-only
-
-Then do one of the following:
-
-- paste it into `GITHUB_TOKEN=""` near the top of the `install.sh` you publish, so
-  every server installs with no extra step. Anyone with the URL can then also
-  read the code, but that is all the token allows; or
-- keep the published file token-free and pass the token per server:
-
-  ```bash
-  curl -sSL https://storage.gosecureserver.in/install.sh | STORAGE_GUARD_TOKEN=github_pat_xxx bash
-  ```
-
-The installer saves the token to `/etc/skyserver-storage-guard.token` (root
-only) for later updates. Without a token, it says the repo is private and stops.
+The repo is public, so no token or login is needed. The installer downloads the
+`main` branch archive from github.com, checks it, swaps it into place and
+runs `bin/deploy.sh`.
 
 The installer sets up `/opt/skyserver-storage-guard`,
 `/etc/skyserver-storage-guard.conf`, the cron jobs, log rotation, the cPanel page
