@@ -4,7 +4,7 @@ All notable changes to SkyServer Storage Guard are listed here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.1.2] - 2026-10-05
+## 0.1.2 · 2026-10-05
 
 ### Fixed
 - **Scan again** showed "Scanning " with no account name, and a PHP warning.
@@ -15,14 +15,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   set one.
 - An account whose scan never started no longer shows as *scanning* for 35 minutes.
 
-## [0.1.1] - 2026-10-05
+## 0.1.1 · 2026-10-05
 
 ### Fixed
 - **Scan all accounts** could fail silently and leave the Activity Log empty. Scans now start in a
   clean, detached environment and always use the PHP command-line binary. If a scan can't start,
   the button and the log say why.
 
-## [0.1.0] - 2026-10-05
+## 0.1.0 · 2026-10-05
 
 ### Added
 - Nightly scan of every cPanel account for archives/backups and oversized files.
