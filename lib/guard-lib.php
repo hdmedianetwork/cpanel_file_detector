@@ -22,6 +22,19 @@
  *   scanning/<user>         marker while that account is scanned    0600 root
  */
 
+// PHP falls back to UTC when php.ini names no timezone, which would put the
+// log, the deadlines and the reminder emails hours away from the server's
+// own clock. Use the system's zone instead.
+if (!ini_get('date.timezone')) {
+    $tz = @readlink('/etc/localtime');
+    if ($tz && preg_match('#zoneinfo/(.+)$#', $tz, $m) && @date_default_timezone_set($m[1])) {
+        // set
+    } elseif (is_readable('/etc/timezone')) {
+        @date_default_timezone_set(trim((string) file_get_contents('/etc/timezone')));
+    }
+    unset($tz, $m);
+}
+
 define('SG_CONF_FILE', getenv('SG_CONF') ?: '/etc/skyserver-storage-guard.conf');
 define('SG_SPOOL', rtrim(getenv('SG_SPOOL') ?: '/var/spool/skyserver-storage-guard', '/'));
 define('SG_LOG_FILE', getenv('SG_LOG') ?: '/var/log/skyserver-storage-guard.log');
@@ -421,13 +434,17 @@ function sg_scan_user(string $user, ?array $conf = null): array {
     array_push($cmd, '-type', 'f', '-size', '+' . max(0, intdiv($minBytes, 1024) - 1) . 'k',
                '-printf', '%s\t%T@\t%P\0');
 
-    $spec = [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    // stderr goes to a file, not a pipe: a find that complains a lot (an
+    // odd mount, a tree changing under it) would otherwise fill the pipe and
+    // stall while this loop waits on stdout — until the timeout killed it.
+    $errFile = tempnam(sys_get_temp_dir(), 'sg-find-');
+    $spec = [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']];
     $proc = @proc_open($cmd, $spec, $pipes, $home);
     if (!is_resource($proc)) {
+        @unlink($errFile);
         $report['error'] = 'could not start find';
         return $report;
     }
-    stream_set_blocking($pipes[2], false);
 
     $flagged = [];
     $buf = '';
@@ -438,7 +455,6 @@ function sg_scan_user(string $user, ?array $conf = null): array {
             break;
         }
         $buf .= $chunk;
-        $errText .= (string) stream_get_contents($pipes[2]);
         while (($pos = strpos($buf, "\0")) !== false) {
             $rec = substr($buf, 0, $pos);
             $buf = substr($buf, $pos + 1);
@@ -460,10 +476,10 @@ function sg_scan_user(string $user, ?array $conf = null): array {
             ];
         }
     }
-    $errText .= (string) stream_get_contents($pipes[2]);
     fclose($pipes[1]);
-    fclose($pipes[2]);
     $exit = proc_close($proc);
+    $errText = (string) @file_get_contents($errFile, false, null, 0, 4096);
+    @unlink($errFile);
 
     if ($exit === 124) {
         $report['error'] = 'scan stopped after ' . ($timeout / 60) . ' min (SCAN_TIMEOUT_MIN) — results are partial';
@@ -559,7 +575,12 @@ function sg_scanning_users(array $conf): array {
     $out = [];
     $limit = sg_int($conf, 'SCAN_TIMEOUT_MIN', 1) * 60 + 300;
     foreach (glob(SG_SPOOL . '/scanning/*') ?: [] as $f) {
-        if (time() - (int) @filemtime($f) < $limit) {
+        // Written by the dashboard before the scan starts; the scan replaces
+        // it with its pid. One still "queued" after two minutes never started.
+        $age = time() - (int) @filemtime($f);
+        if (@file_get_contents($f) === 'queued' && $age > 120) {
+            @unlink($f);
+        } elseif ($age < $limit) {
             $out[] = basename($f);
         } else {
             @unlink($f);
