@@ -118,7 +118,7 @@ in every theme, and the WHM plugin. Then:
 
 **Releasing an update:** bump `VERSION` and merge to `main`. Every server then
 shows the new version under **Check for Updates** in WHM, and **Install update**
-downloads it from GitHub, using the saved token. Re-running the `curl … | bash`
+downloads it from GitHub. Re-running the `curl … | bash`
 line does the same thing. Settings, scan reports and quarantined files are
 kept. The published `install.sh` only needs re-uploading if `install.sh` itself changes.
 
