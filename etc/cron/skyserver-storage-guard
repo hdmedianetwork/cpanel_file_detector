@@ -1,5 +1,5 @@
 # SkyServer Storage Guard — installed to /etc/cron.d/skyserver-storage-guard
-# __INSTALL_DIR__ is replaced with the real install path by bin/deploy.sh.
+# The install path below is filled in by bin/deploy.sh.
 
 # cron's own PATH has none of cPanel's binaries in it; whmapi1 lives in
 # /usr/local/cpanel/bin. bin/guard fixes this for itself too.

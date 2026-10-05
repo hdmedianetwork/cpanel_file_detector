@@ -94,30 +94,51 @@ only ever delete what the customer could already delete in File Manager.
 
 ## Install
 
-Same two ways as the Backup Manager.
+The repo is private, so servers never touch GitHub. Everything ships as one
+self-contained `install.sh` hosted on **storage.gosecureserver.in**.
 
-**Standalone (recommended).** Build one self-contained script and host it
-anywhere. It needs no GitHub access on the server:
-
-```bash
-scripts/build-installer.sh            # → dist/install-standalone.sh
-# upload it, then on the server as root:
-curl -sSL https://<your-host>/storage-guard.sh | bash
-```
-
-**Git-based (development).** Only works where this repo can be cloned:
+**Publishing a release** (on your own machine, from this repo):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/hdmedianetwork/cpanel_file_detector/main/install.sh | bash
+scripts/build-installer.sh        # → dist/install.sh and dist/VERSION
 ```
 
-Either way `bin/deploy.sh` sets up `/opt/skyserver-storage-guard`,
-`/etc/skyserver-storage-guard.conf`, `/etc/cron.d/skyserver-storage-guard`,
-log rotation, the cPanel page in every theme, and the WHM plugin. Then:
+Upload **both** files to the web root of `storage.gosecureserver.in`, so these work:
+
+```
+https://storage.gosecureserver.in/install.sh
+https://storage.gosecureserver.in/VERSION
+```
+
+Check that the web server sends the script as plain text, not as a download page or HTML:
+
+```bash
+curl -sSL https://storage.gosecureserver.in/install.sh | head -3   # must start with #!/bin/bash
+curl -sSL https://storage.gosecureserver.in/VERSION                # e.g. 0.1.0
+```
+
+To publish somewhere else, pass the URL: `scripts/build-installer.sh https://other.example.com`.
+
+**Installing on a server** (as root, on any WHM/cPanel box, yours or a client's):
+
+```bash
+curl -sSL https://storage.gosecureserver.in/install.sh | bash
+```
+
+This writes `/opt/skyserver-storage-guard` and runs `bin/deploy.sh`, which
+sets up `/etc/skyserver-storage-guard.conf`, the cron jobs, log rotation, the
+cPanel page in every theme, and the WHM plugin. Then:
 
 1. WHM → Plugins → SkyServer Storage Guard → **Scan all accounts**.
 2. Look through what it found.
 3. Settings → set the From address and support contact, and **Send test email**.
+
+**Releasing an update.** Bump `VERSION`, run `scripts/build-installer.sh`, and
+re-upload both files. Every server then shows the new version under **Check for
+Updates** in WHM, and **Install update** applies it. That downloads the same
+`install.sh` (and refuses anything that isn't one) and runs it. Running the
+`curl … | bash` line again does the same thing. Settings, scan reports and
+quarantined files are kept.
 
 From the shell:
 
@@ -127,11 +148,6 @@ From the shell:
 /opt/skyserver-storage-guard/bin/guard status            # flagged accounts, one per line
 /opt/skyserver-storage-guard/bin/guard remind <user>
 ```
-
-**Updating.** Bump `VERSION`, push to `main`, then press **Check for Updates**
-in the dashboard. Like the Backup Manager's updater, it reads the version
-from `raw.githubusercontent.com`, so it needs the repo to be reachable from
-the server.
 
 **Uninstall:** `/opt/skyserver-storage-guard/scripts/uninstall.sh`. It leaves the
 config, the reports, and any files still in quarantine, which belong to customers.
