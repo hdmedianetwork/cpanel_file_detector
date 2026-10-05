@@ -17,6 +17,7 @@
 require_once dirname(__DIR__) . '/lib/guard-lib.php';
 
 if (PHP_SAPI !== 'cli') {
+    fwrite(STDERR, 'guard.php must run under the PHP CLI, not ' . PHP_SAPI . "\n");
     exit(1);
 }
 if (function_exists('posix_geteuid') && posix_geteuid() !== 0 && !getenv('SG_TEST_HOME_BASE')) {
